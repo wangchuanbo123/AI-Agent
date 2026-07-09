@@ -1,0 +1,17 @@
+# 核心图运行时。
+langgraph==1.2.8
+langchain==1.3.11
+langchain-core==1.4.8
+
+# 模型提供方集成。
+langchain-ollama==1.1.0
+langchain-openai==1.3.3
+openai==2.44.0
+
+# MCP 客户端和服务端支持。
+langchain-mcp-adapters==0.3.0
+mcp==1.28.1
+
+# 配置读取和数据结构校验。
+pydantic==2.13.4
+python-dotenv==1.2.2

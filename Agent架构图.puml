@@ -1,0 +1,158 @@
+@startuml
+title AI Agent 分层架构图（LangGraph + Ollama + MCP）
+
+top to bottom direction
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam linetype ortho
+skinparam nodesep 45
+skinparam ranksep 55
+skinparam defaultFontName Microsoft YaHei
+skinparam ArrowColor #4B5563
+skinparam ArrowThickness 1.1
+skinparam PackageBorderColor #9CA3AF
+skinparam PackageBackgroundColor #F9FAFB
+skinparam ComponentBorderColor #6B7280
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam DatabaseBorderColor #6B7280
+skinparam DatabaseBackgroundColor #F3F4F6
+skinparam NoteBorderColor #D97706
+skinparam NoteBackgroundColor #FFFBEB
+
+actor "用户\nCLI 输入" as User
+
+package "1. Application 入口层" as ApplicationLayer {
+  component "app.py\nCLI 启动入口\n组装运行时组件\n处理 /thread 切换" as App
+  component "config.py\nSettings\n读取 .env / 环境变量" as Settings
+}
+
+package "2. Interfaces 稳定抽象层" as InterfaceLayer {
+  interface "Agent" as IAgent
+  interface "LLMFactory" as ILLMFactory
+  interface "ToolBindableLLM" as IToolBindableLLM
+  interface "ShortTermMemory" as IShortTermMemory
+  interface "Tool" as ITool
+  interface "Executor" as IExecutor
+}
+
+package "3. Core Agent 核心层" as CoreLayer {
+  component "LangGraphAgent\n统一 Agent 门面\ncore/agent.py" as CoreAgent
+  component "AgentContext\n会话上下文\ncore/context.py" as AgentContext
+  component "AgentState\nmessages 状态\ncore/state.py" as AgentState
+  component "ExecutionStrategy\n当前：REACT\ncore/controller.py" as Strategy
+  component "reasoning/\nPlanner / Reflector 预留" as Reasoning
+  component "executor/\n自定义执行器预留" as CoreExecutor
+}
+
+package "4. Adapters 外部框架适配层" as AdapterLayer {
+  package "LangGraph 编排适配" as LangGraphAdapter {
+    component "build_react_graph()\nadapters/langgraph/graph.py" as GraphBuilder
+    component "CompiledStateGraph\n编译后的可运行图" as CompiledGraph
+    component "agent_node\nLLM 推理节点" as AgentNode
+    component "tools_condition\n是否需要工具" as ToolsCondition
+    component "ToolNode\n工具执行节点" as ToolNode
+  }
+
+  package "LangChain 模型适配" as ModelAdapter {
+    component "create_chat_model()\nadapters/langchain/llm.py" as ModelFactory
+    component "ChatOllama\n本地 Ollama 模型" as ChatOllama
+    component "ChatOpenAI\nOpenAI-compatible API" as ChatOpenAI
+  }
+
+  package "MCP 工具适配" as MCPAdapter {
+    component "load_mcp_tools()\nadapters/mcp/client.py" as MCPLoader
+    component "MultiServerMCPClient\nMCP 客户端" as MCPClient
+    artifact "mcp_servers.json\nMCP server 配置" as MCPConfig
+  }
+}
+
+package "5. Runtime 能力层" as RuntimeLayer {
+  package "Tools 工具" as ToolsLayer {
+    component "calculator\n内置计算器工具" as Calculator
+    component "search / weather\n占位：建议后续通过 MCP 接入" as ToolPlaceholders
+    component "MCP tools\nadd / multiply / ..." as MCPTools
+  }
+
+  package "Memory 记忆" as MemoryLayer {
+    component "LangGraphShortTermMemory\nmemory/short_term.py" as ShortMemory
+    database "InMemorySaver\nthread_id -> messages state" as InMemorySaver
+    component "Working / Long-term / Vector\n预留扩展点" as FutureMemory
+  }
+
+  package "Schemas 数据结构" as SchemaLayer {
+    artifact "AgentTask\n用户任务" as AgentTask
+    artifact "AgentAction\n工具动作" as AgentAction
+    artifact "Observation\n工具观察结果" as Observation
+    artifact "AgentResult\n最终输出" as AgentResult
+    artifact "Plan\n规划预留" as Plan
+  }
+}
+
+package "6. External Services 外部运行环境" as ExternalLayer {
+  node "Ollama Server\nlocalhost:11434\nqwen3:4b" as OllamaServer
+  node "OpenAI-compatible API\n可选云端模型" as OpenAIAPI
+  node "MCP Server\nexamples/mcp_math_server.py\n或其他外部工具服务" as MCPServer
+}
+
+' 主启动流程和调用流程。
+User -down-> App : 输入问题
+App -right-> Settings : 读取配置
+App -down-> CoreAgent : 创建并调用 Agent
+
+' 层级级别的契约依赖，避免过多细碎连线。
+CoreLayer ..> InterfaceLayer : 核心只依赖抽象
+AdapterLayer ..> InterfaceLayer : 适配外部框架
+RuntimeLayer ..> InterfaceLayer : 提供工具和记忆实现
+
+' app.py 中的运行时组装关系。
+App -down-> GraphBuilder : 构建 ReAct 图
+App -down-> ModelFactory : 创建 LLM
+App -down-> MCPLoader : 加载 MCP 工具
+App -down-> ShortMemory : 创建短期记忆
+
+' LangGraph 内部 ReAct 循环。
+GraphBuilder -down-> CompiledGraph : compile(checkpointer)
+CompiledGraph -down-> AgentNode : Reason
+AgentNode -down-> ToolsCondition : 是否有 tool_calls
+ToolsCondition -down-> ToolNode : Act
+ToolNode -up-> AgentNode : Observe
+
+' 模型提供方路由。
+AgentNode -right-> ModelFactory : ainvoke(messages)
+ModelFactory -down-> ChatOllama : provider=ollama
+ModelFactory -down-> ChatOpenAI : provider=openai_compatible
+ChatOllama -down-> OllamaServer : HTTP 本地推理
+ChatOpenAI -down-> OpenAIAPI : OpenAI-compatible 请求
+
+' 工具路由。
+ToolNode -right-> Calculator : 内置工具
+ToolNode -right-> MCPTools : 外部 MCP 工具
+MCPLoader -down-> MCPConfig : 读取配置
+MCPLoader -down-> MCPClient : 创建客户端
+MCPClient -down-> MCPServer : stdio / http
+MCPServer -up-> MCPTools : 暴露工具
+
+' 记忆和 schema 使用关系。
+ShortMemory -down-> InMemorySaver : 保存会话状态
+CompiledGraph -left-> InMemorySaver : checkpoint by thread_id
+CompiledGraph -left-> AgentState : messages state
+App -left-> SchemaLayer : AgentTask
+CoreAgent -left-> SchemaLayer : AgentResult
+ToolNode -left-> SchemaLayer : AgentAction / Observation
+Reasoning -left-> SchemaLayer : Plan 预留
+
+legend right
+  线条说明：
+  -->  运行时调用 / 数据流
+  ..|> 接口实现关系
+
+  设计原则：
+  1. Application 只负责组装和启动。
+  2. Core 只依赖抽象和图结果。
+  3. Adapters 隔离 LangGraph、LangChain、Ollama、MCP。
+  4. Runtime 层承载工具、记忆和数据结构。
+endlegend
+
+@enduml

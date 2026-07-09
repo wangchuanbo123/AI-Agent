@@ -1,0 +1,5 @@
+# 先安装运行时依赖。
+-r requirements.txt
+
+# 测试运行器。
+pytest==8.4.2
