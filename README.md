@@ -1,164 +1,276 @@
+<a id="top"></a>
+
+<div align="center">
+
 # AI Agent
 
-这是一个基于 LangGraph 的最小可运行 Agent 项目。它的目标不是一次性做成完整生产系统，而是先搭出一套清晰、可扩展、能运行的 Agent 骨架。
+</div>
 
-当前版本支持：
+基于 LangGraph 的本地 Agent 骨架  
+支持 Ollama、本地工具、短期记忆和 MCP 外部工具接入
 
-- 使用 LangGraph 实现 ReAct Agent 执行循环。
-- 默认使用本地 Ollama 模型 `qwen3:4b`。
-- 预留 OpenAI-compatible API 接入方式。
-- 使用 `thread_id` 实现进程内短期记忆。
-- 内置一个安全的 `calculator` 计算器工具。
-- 支持通过 MCP 加载外部工具。
-- 使用 `interfaces/`、`core/`、`adapters/` 分层，避免核心逻辑直接绑定具体框架。
+---
 
-## 这个项目是什么
+## 目录
 
-这个项目实现的是一个“可以调用工具的聊天式 Agent”。
+- [项目简介](#intro)
+- [能力概览](#features)
+- [快速开始](#quick-start)
+  - [1. 进入项目目录](#step-cd)
+  - [2. 创建虚拟环境](#step-venv)
+  - [3. 激活虚拟环境](#step-activate)
+  - [4. 安装依赖](#step-install)
+  - [5. 安装 Ollama 并拉取模型](#step-ollama)
+  - [6. 准备配置文件](#step-env)
+  - [7. 运行 Agent](#step-run)
+- [最小命令清单](#commands-min)
+- [核心工作流](#workflow)
+- [目录结构](#layout)
+- [架构分层](#layers)
+- [短期记忆](#memory)
+- [MCP 工具](#mcp)
+- [配置说明](#config)
+- [常用命令](#commands)
+- [测试](#tests)
+- [常见问题](#faq)
+- [更多文档](#docs)
+- [当前边界](#scope)
+- [推荐下一步](#next)
 
-普通聊天模型只能根据输入直接生成回答；Agent 则可以在回答前判断是否需要调用工具。例如用户问：
+---
+
+<a id="intro"></a>
+
+## 项目简介
+
+这是一个“能跑、好懂、可扩展”的 Agent 基础项目。它先把 Agent 项目最关键的几层拆清楚：
+
+```text
+入口 -> 抽象 -> 核心 -> 适配 -> 工具/记忆/数据结构 -> 外部服务
+```
+
+你可以把它理解成一个本地 Agent 的起步模板：
+
+```text
+用户输入
+  -> 大模型推理
+  -> 判断是否需要工具
+  -> 调用工具
+  -> 读取工具结果
+  -> 输出最终答案
+```
+
+[回到顶部](#top)
+
+---
+
+<a id="features"></a>
+
+## 能力概览
+
+| 项目项 | 当前状态 |
+|---|---|
+| Agent 框架 | LangGraph |
+| 执行策略 | ReAct |
+| 默认模型 | Ollama `qwen3:4b` |
+| Python 版本 | 推荐 Python 3.12，已验证 3.12.10 |
+| 工具系统 | 内置工具 + MCP 工具 |
+| 默认工具 | `calculator`、MCP 示例 `add`、`multiply` |
+| 记忆能力 | 进程内短期记忆 |
+| 默认入口 | `app.py` CLI |
+| 配置方式 | `.env` + 环境变量 |
+
+适合用来：
+
+- 跑通一个最小可用的本地 Agent。
+- 学习 LangGraph 的 ReAct 流程。
+- 使用 Ollama 本地模型。
+- 添加自定义内置工具。
+- 通过 MCP 接入外部工具。
+- 继续扩展长期记忆、搜索、天气、文件工具或 Web API。
+
+[回到顶部](#top)
+
+---
+
+<a id="quick-start"></a>
+
+## 快速开始
+
+下面命令适用于 Windows PowerShell。
+
+<a id="step-cd"></a>
+
+### 1. 进入项目目录
+
+```powershell
+cd D:\MyCode\AI-Agent
+```
+
+<a id="step-venv"></a>
+
+### 2. 创建虚拟环境
+
+推荐使用 Python 3.12：
+
+```powershell
+py -3.12 -m venv .venv
+```
+
+如果你的默认 `python` 已经是 3.12，也可以：
+
+```powershell
+python -m venv .venv
+```
+
+<a id="step-activate"></a>
+
+### 3. 激活虚拟环境
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+激活成功后，命令行前面会出现：
+
+```text
+(.venv)
+```
+
+<a id="step-install"></a>
+
+### 4. 安装依赖
+
+开发和测试推荐安装：
+
+```powershell
+pip install -r requirements-dev.txt
+```
+
+只运行项目可以安装：
+
+```powershell
+pip install -r requirements.txt
+```
+
+`requirements-dev.txt` 已经包含 `requirements.txt`，所以开发时不需要两个都装。
+
+<a id="step-ollama"></a>
+
+### 5. 安装 Ollama 并拉取模型
+
+安装 Ollama 后，拉取默认模型：
+
+```powershell
+ollama pull qwen3:4b
+```
+
+确认 Ollama 可用：
+
+```powershell
+ollama --version
+ollama list
+```
+
+<a id="step-env"></a>
+
+### 6. 准备配置文件
+
+如果还没有 `.env`：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+默认配置会使用：
+
+```text
+MODEL_PROVIDER=ollama
+OLLAMA_MODEL=qwen3:4b
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+<a id="step-run"></a>
+
+### 7. 运行 Agent
+
+```powershell
+python app.py
+```
+
+启动成功后会看到类似输出：
+
+```text
+Agent ready: provider=ollama, model=qwen3:4b, tools=3, thread=default
+Type 'exit' or 'quit' to stop. Use '/thread NAME' to switch memory thread.
+```
+
+可以输入：
 
 ```text
 2 + 3 * 4 等于多少？
 ```
 
-Agent 可以选择调用 `calculator` 工具，拿到工具返回的结果，再把最终答案回复给用户。
+退出：
 
-第一版的执行策略是 ReAct：
+```text
+exit
+```
+
+[回到顶部](#top)
+
+---
+
+<a id="commands-min"></a>
+
+## 最小命令清单
+
+如果已经安装好 Python 3.12 和 Ollama，可以直接按顺序执行：
+
+```powershell
+cd D:\MyCode\AI-Agent
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+ollama pull qwen3:4b
+Copy-Item .env.example .env
+python app.py
+```
+
+[回到顶部](#top)
+
+---
+
+<a id="workflow"></a>
+
+## 核心工作流
+
+这个 Agent 的一次请求大致这样流动：
+
+```text
+用户输入
+  -> app.py
+  -> LangGraphAgent
+  -> LangGraph ReAct Graph
+  -> LLM 判断是否需要工具
+  -> ToolNode 调用工具
+  -> LLM 根据工具结果继续推理
+  -> AgentResult 最终回答
+```
+
+ReAct 策略可以理解为：
 
 ```text
 Reason -> Act -> Observe -> Reason -> Final Answer
 ```
 
-含义是：
+也就是说，模型不是一次性回答，而是可以先判断、再调用工具、再根据工具结果回答。
 
-- `Reason`：模型判断当前问题应该直接回答，还是需要调用工具。
-- `Act`：如果需要工具，Agent 调用对应工具。
-- `Observe`：工具返回结果，作为观察信息交还给模型。
-- `Reason`：模型基于观察结果继续推理。
-- `Final Answer`：模型输出最终答案。
+[回到顶部](#top)
 
-## 适合谁看
+---
 
-如果你不了解这个项目，可以按下面顺序阅读：
-
-1. 先看“核心概念”。
-2. 再看“请求是如何流转的”。
-3. 然后看“目录结构”。
-4. 最后看“安装与运行”和“如何扩展”。
-
-如果你只是想跑起来，直接跳到“安装与运行”。
-
-## 核心概念
-
-### Agent
-
-Agent 是一个可以根据任务自主决定下一步动作的程序。这里的 Agent 可以：
-
-- 接收用户输入。
-- 调用大模型推理。
-- 判断是否需要工具。
-- 调用工具。
-- 读取工具结果。
-- 继续推理并返回最终答案。
-
-### LangGraph
-
-LangGraph 是本项目的 Agent 流程编排框架。
-
-在这个项目里，LangGraph 负责维护 ReAct 流程：
-
-```text
-用户输入 -> agent 节点 -> 是否需要工具 -> tools 节点 -> agent 节点 -> 最终答案
-```
-
-### LangChain
-
-LangChain 在这里主要用于统一模型和工具接口。
-
-例如：
-
-- `ChatOllama` 用来连接本地 Ollama 模型。
-- `ChatOpenAI` 可以连接 OpenAI-compatible API。
-- `@tool` 可以把普通 Python 函数包装成模型可调用工具。
-
-### Ollama
-
-Ollama 用来在本地运行大模型。
-
-当前默认模型是：
-
-```text
-qwen3:4b
-```
-
-这意味着项目默认不依赖云端 API key，只要本机安装 Ollama 并拉取模型即可运行。
-
-### MCP
-
-MCP 是 Model Context Protocol，可以理解为一种“外部工具接入协议”。
-
-通过 MCP，Agent 不需要把所有工具都写死在项目里，而是可以从外部 MCP server 加载工具。
-
-当前项目已经提供了一个示例 MCP server：
-
-```text
-examples/mcp_math_server.py
-```
-
-它提供两个工具：
-
-- `add`
-- `multiply`
-
-### 短期记忆
-
-短期记忆指的是 Agent 在当前 Python 进程里记住一段会话上下文。
-
-本项目用 LangGraph 的 `InMemorySaver` 实现短期记忆，并用 `thread_id` 区分不同会话。
-
-注意：这是短期记忆，不是长期记忆。程序退出后，记忆会消失。
-
-## 请求是如何流转的
-
-一次用户输入的大致流程如下：
-
-```text
-用户在 CLI 输入问题
-        |
-        v
-app.py 读取输入
-        |
-        v
-LangGraphAgent.ainvoke(...)
-        |
-        v
-LangGraph ReAct Graph
-        |
-        v
-LLM 判断是否需要工具
-        |
-        +-- 不需要工具 -> 直接输出最终答案
-        |
-        +-- 需要工具 -> 调用 calculator 或 MCP 工具
-                            |
-                            v
-                         工具返回结果
-                            |
-                            v
-                         LLM 继续推理
-                            |
-                            v
-                         输出最终答案
-```
-
-短期记忆在这个过程中通过 `thread_id` 生效：
-
-```text
-thread_id -> LangGraph config -> InMemorySaver -> messages state
-```
-
-同一个 `thread_id` 会复用同一段消息历史，不同 `thread_id` 互相隔离。
+<a id="layout"></a>
 
 ## 目录结构
 
@@ -174,412 +286,91 @@ thread_id -> LangGraph config -> InMemorySaver -> messages state
 |-- schemas/
 |-- examples/
 |-- tests/
-`-- utils/
+|-- ARCHITECTURE.md
+|-- Agent架构图.puml
+`-- README.md
 ```
 
-下面是每个目录的职责。
+| 路径 | 作用 |
+|---|---|
+| `app.py` | CLI 入口，负责组装模型、工具、记忆和图 |
+| `config.py` | 读取 `.env` 和环境变量 |
+| `interfaces/` | 定义稳定接口协议 |
+| `core/` | Agent 核心门面、状态和策略 |
+| `adapters/` | LangGraph、LangChain、MCP 等外部适配 |
+| `tools/` | 内置工具，目前有 `calculator` |
+| `memory/` | 短期记忆实现和长期记忆预留 |
+| `schemas/` | Pydantic 数据结构 |
+| `examples/` | 示例 MCP server |
+| `tests/` | 单元测试 |
+| `ARCHITECTURE.md` | 更详细的代码架构导览 |
+| `Agent架构图.puml` | PlantUML 架构图 |
 
-### `app.py`
+[回到顶部](#top)
 
-项目入口文件。
+---
 
-它负责：
+<a id="layers"></a>
 
-- 读取 `.env` 配置。
-- 创建 LLM。
-- 创建短期记忆。
-- 加载内置工具。
-- 加载 MCP 工具。
-- 构建 LangGraph 图。
-- 启动命令行交互。
-
-如果你想知道整个项目怎么串起来，先看这个文件。
-
-### `config.py`
-
-配置读取模块。
-
-它负责从 `.env` 和系统环境变量中读取配置，例如：
-
-- 使用哪个模型 provider。
-- Ollama 模型名。
-- Ollama 服务地址。
-- OpenAI-compatible API 地址。
-- MCP 配置文件路径。
-- 默认 `thread_id`。
-
-核心配置类是：
+## 架构分层
 
 ```text
-Settings
+Application 入口层
+  -> Interfaces 抽象层
+  -> Core 核心层
+  -> Adapters 适配层
+  -> Runtime 能力层
+  -> External 外部服务
 ```
 
-### `interfaces/`
+| 层 | 对应位置 | 说明 |
+|---|---|---|
+| Application | `app.py`, `config.py` | 负责启动和组装 |
+| Interfaces | `interfaces/` | 定义稳定抽象，减少框架绑定 |
+| Core | `core/` | 封装 Agent 行为 |
+| Adapters | `adapters/` | 接入 LangGraph、LangChain、MCP、模型后端 |
+| Runtime | `tools/`, `memory/`, `schemas/` | 提供工具、记忆和数据结构 |
+| External | Ollama、MCP server、API 服务 | 外部模型和工具服务 |
 
-稳定抽象层。
+[回到顶部](#top)
 
-这里定义项目内部最重要的接口协议：
+---
 
-- `Agent`
-- `LLMFactory`
-- `ToolBindableLLM`
-- `ShortTermMemory`
-- `Tool`
-- `Executor`
+<a id="memory"></a>
 
-设计目的：核心代码尽量依赖这些抽象，而不是直接依赖 LangGraph、LangChain、Ollama 或 MCP。
+## 短期记忆
 
-这样未来替换框架时，不需要大面积改核心逻辑。
-
-### `core/`
-
-Agent 核心层。
-
-当前主要内容：
-
-- `core/agent.py`：提供 `LangGraphAgent`，把编译后的 LangGraph 图包装成统一 Agent 接口。
-- `core/state.py`：定义 Agent 状态结构。
-- `core/context.py`：定义会话上下文。
-- `core/controller.py`：定义执行策略，目前只有 `REACT`。
-- `core/reasoning/`：为后续 planner、reflector 等推理模块预留。
-- `core/executor/`：为后续自定义执行器预留。
-
-### `adapters/`
-
-外部框架和协议适配层。
-
-它负责把具体框架接进项目，但不让核心层直接依赖外部细节。
-
-当前包括：
-
-- `adapters/langchain/llm.py`：根据配置创建 `ChatOllama` 或 `ChatOpenAI`。
-- `adapters/langgraph/graph.py`：构建 ReAct LangGraph 图。
-- `adapters/mcp/client.py`：读取 `mcp_servers.json` 并加载 MCP 工具。
-- `adapters/openai/`：预留给更复杂的 OpenAI 适配逻辑。
-
-### `tools/`
-
-内置工具目录。
-
-当前实现了：
-
-- `calculator.py`：安全计算基础算术表达式。
-
-保留了：
-
-- `search.py`
-- `weather.py`
-
-这两个暂时不实现，因为搜索和天气更适合通过 MCP 或外部 API 接入。
-
-### `memory/`
-
-记忆层。
-
-当前实现：
-
-- `short_term.py`：基于 LangGraph `InMemorySaver` 的短期记忆。
-
-预留：
-
-- `working_memory.py`：工作记忆，适合保存一次运行中的临时结构化数据。
-- `long_term.py`：长期记忆，未来可接 SQLite、文件存储或数据库。
-- `vector_store.py`：向量记忆，未来可接 embedding 和向量数据库。
-
-### `schemas/`
-
-数据结构层。
-
-这里用 Pydantic 定义稳定数据结构：
-
-- `AgentTask`
-- `AgentAction`
-- `Observation`
-- `Plan`
-- `AgentResult`
-
-这些结构让不同层之间的数据传递更清晰。
-
-### `examples/`
-
-示例目录。
-
-当前包含：
-
-```text
-examples/mcp_math_server.py
-```
-
-这是一个最小 MCP server，用来验证 MCP 工具加载。
-
-### `tests/`
-
-单元测试目录。
-
-当前测试覆盖：
-
-- calculator 表达式计算。
-- calculator 拒绝危险 Python 表达式。
-- 默认配置加载。
-- MCP 配置文件加载。
-
-### `utils/`
-
-通用工具函数预留目录。
-
-当前还没有具体实现。
-
-
-## 安装与运行
-
-### 1. 安装 Ollama
-
-项目默认使用本地 Ollama，因此需要先安装 Ollama。
-
-安装完成后，在 PowerShell 中确认命令可用：
-
-```powershell
-ollama --version
-```
-
-### 2. 拉取默认模型
-
-```powershell
-ollama pull qwen3:4b
-```
-
-如果电脑配置较低，可以换成更小的模型，例如：
-
-```powershell
-ollama pull qwen3:1.7b
-```
-
-然后修改 `.env`：
-
-```text
-OLLAMA_MODEL=qwen3:1.7b
-```
-
-### 3. 创建虚拟环境
-
-```powershell
-python -m venv .venv
-```
-
-### 4. 激活虚拟环境
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-### 5. 安装依赖
-
-开发环境建议安装：
-
-```powershell
-pip install -r requirements-dev.txt
-```
-
-只运行项目可以安装：
-
-```powershell
-pip install -r requirements.txt
-```
-
-### 6. 创建本地配置
-
-```powershell
-Copy-Item .env.example .env
-```
-
-当前仓库里也可能已经有一个本地 `.env`。这个文件被 `.gitignore` 忽略，适合保存本机配置。
-
-### 7. 运行 Agent
-
-```powershell
-python app.py
-```
-
-启动成功后，会看到类似输出：
-
-```text
-Agent ready: provider=ollama, model=qwen3:4b, tools=3, thread=default
-Type 'exit' or 'quit' to stop. Use '/thread NAME' to switch memory thread.
-```
-
-然后可以输入问题：
-
-```text
-You> 2 + 3 * 4 等于多少？
-```
-
-退出：
-
-```text
-exit
-```
-
-### 8. 运行测试
-
-```powershell
-python -m pytest -q
-```
-
-## 配置说明
-
-`.env.example` 中的默认配置：
-
-```text
-MODEL_PROVIDER=ollama
-OLLAMA_MODEL=qwen3:4b
-OLLAMA_BASE_URL=http://localhost:11434
-
-OPENAI_COMPATIBLE_MODEL=
-OPENAI_COMPATIBLE_BASE_URL=
-OPENAI_COMPATIBLE_API_KEY=
-
-AGENT_TEMPERATURE=0
-AGENT_THREAD_ID=default
-MCP_CONFIG_PATH=mcp_servers.json
-```
-
-### `MODEL_PROVIDER`
-
-模型后端类型。
-
-当前支持：
-
-```text
-ollama
-openai_compatible
-```
-
-默认：
-
-```text
-MODEL_PROVIDER=ollama
-```
-
-### `OLLAMA_MODEL`
-
-Ollama 模型名称。
-
-默认：
-
-```text
-OLLAMA_MODEL=qwen3:4b
-```
-
-### `OLLAMA_BASE_URL`
-
-Ollama 服务地址。
-
-默认：
-
-```text
-OLLAMA_BASE_URL=http://localhost:11434
-```
-
-### `AGENT_THREAD_ID`
-
-默认短期记忆线程 ID。
-
-默认：
-
-```text
-AGENT_THREAD_ID=default
-```
-
-### `MCP_CONFIG_PATH`
-
-MCP 配置文件路径。
-
-默认：
-
-```text
-MCP_CONFIG_PATH=mcp_servers.json
-```
-
-## 切换到 OpenAI-compatible API
-
-如果你要使用兼容 OpenAI API 格式的云端模型，可以这样配置：
-
-```text
-MODEL_PROVIDER=openai_compatible
-OPENAI_COMPATIBLE_MODEL=your-model
-OPENAI_COMPATIBLE_BASE_URL=https://your-provider.example/v1
-OPENAI_COMPATIBLE_API_KEY=your-api-key
-```
-
-这种方式适合接入支持 OpenAI-compatible 接口的服务。
-
-注意：不同服务虽然接口格式相似，但能力不一定完全一致。工具调用、JSON 输出、上下文长度、流式输出等能力可能存在差异。
-
-## 短期记忆详解
-
-短期记忆文件：
+短期记忆在：
 
 ```text
 memory/short_term.py
 ```
 
-核心类：
+当前使用 LangGraph 的 `InMemorySaver`：
 
 ```text
-LangGraphShortTermMemory
+thread_id -> LangGraph config -> InMemorySaver -> messages state
 ```
 
-它内部创建：
+同一个 `thread_id` 会保留同一段会话上下文。
 
-```text
-InMemorySaver
-```
-
-每次调用 Agent 时，都会传入一个 LangGraph config：
-
-```python
-{"configurable": {"thread_id": thread_id}}
-```
-
-LangGraph 会根据这个 `thread_id` 找到对应的历史状态。
-
-举例：
-
-```text
-thread_id = default
-```
-
-代表默认会话。
-
-```text
-thread_id = project_a
-```
-
-代表另一段独立会话。
-
-在 CLI 中切换：
+在 CLI 中可以切换会话：
 
 ```text
 /thread project_a
 ```
 
-短期记忆适合：
+注意：这是短期记忆，只在当前 Python 进程中有效。程序退出后不会持久化。
 
-- 当前命令行会话中的多轮对话。
-- 临时上下文。
-- 本地开发和调试。
+[回到顶部](#top)
 
-短期记忆不适合：
+---
 
-- 跨进程保存记忆。
-- 长期用户画像。
-- 大规模知识库检索。
+<a id="mcp"></a>
 
-这些能力应该在后续通过长期记忆或向量记忆实现。
+## MCP 工具
 
-## MCP 详解
-
-MCP 配置文件默认是：
+MCP 配置文件是：
 
 ```text
 mcp_servers.json
@@ -599,13 +390,6 @@ mcp_servers.json
 }
 ```
 
-这个配置表示：
-
-- 启动一个名为 `local_math` 的 MCP server。
-- 使用 `stdio` 通信。
-- 用 Python 运行 `examples/mcp_math_server.py`。
-- 从这个 server 加载可用工具。
-
 当前示例 MCP server 提供：
 
 ```text
@@ -613,164 +397,150 @@ add
 multiply
 ```
 
-启动 Agent 时，MCP loader 会自动读取配置并加载工具。
+如果 `mcp_servers.json` 不存在，Agent 不会报错，只会跳过 MCP 工具。
 
-如果 `mcp_servers.json` 不存在：
+[回到顶部](#top)
 
-- Agent 不会报错。
-- MCP 工具数量为 0。
-- 内置工具仍然可用。
+---
 
-## 如何新增一个内置工具
+<a id="config"></a>
 
-以内置工具为例，可以在 `tools/` 中新增一个文件。
+## 配置说明
 
-例如新增：
+默认 `.env.example`：
 
 ```text
-tools/time_tool.py
+MODEL_PROVIDER=ollama
+OLLAMA_MODEL=qwen3:4b
+OLLAMA_BASE_URL=http://localhost:11434
+
+OPENAI_COMPATIBLE_MODEL=
+OPENAI_COMPATIBLE_BASE_URL=
+OPENAI_COMPATIBLE_API_KEY=
+
+AGENT_TEMPERATURE=0
+AGENT_THREAD_ID=default
+MCP_CONFIG_PATH=mcp_servers.json
 ```
 
-工具函数可以使用 LangChain 的 `@tool`：
+### 切换 Ollama 模型
 
-```python
-from langchain_core.tools import tool
-
-
-@tool
-def current_time() -> str:
-    """Return current time."""
-    return "..."
-```
-
-然后在 `app.py` 中导入并加入工具列表：
-
-```python
-from tools.time_tool import current_time
-
-tools = [calculator, current_time, *mcp_bundle.tools]
-```
-
-如果工具依赖外部系统，优先考虑通过 MCP 接入，这样核心项目更干净。
-
-## 如何新增一个模型后端
-
-模型创建逻辑在：
+例如换成更小的模型：
 
 ```text
-adapters/langchain/llm.py
+OLLAMA_MODEL=qwen3:1.7b
 ```
 
-当前支持：
+并先拉取：
 
-- Ollama：`ChatOllama`
-- OpenAI-compatible：`ChatOpenAI`
+```powershell
+ollama pull qwen3:1.7b
+```
 
-如果要新增一个 provider，一般步骤是：
-
-1. 在 `config.py` 中增加 provider 名称和配置项。
-2. 在 `create_chat_model` 中增加分支。
-3. 返回一个 LangChain `BaseChatModel` 兼容对象。
-4. 确认该模型是否支持工具调用。
-
-如果模型不支持工具调用，ReAct Agent 可能无法正常调用工具。
-
-## 如何扩展长期记忆
-
-长期记忆还没有实现，但目录已经预留：
+### 切换到 OpenAI-compatible API
 
 ```text
-memory/long_term.py
-memory/vector_store.py
+MODEL_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_MODEL=your-model
+OPENAI_COMPATIBLE_BASE_URL=https://your-provider.example/v1
+OPENAI_COMPATIBLE_API_KEY=your-api-key
 ```
 
-常见扩展方式：
+注意：不同 OpenAI-compatible 服务的能力不一定完全一致，尤其是工具调用、JSON 输出、上下文长度和流式输出。
 
-- SQLite：保存长期会话摘要。
-- JSON/Markdown 文件：适合简单本地记忆。
-- 向量数据库：适合语义检索和知识库。
-- 外部数据库：适合多用户或服务端部署。
+[回到顶部](#top)
 
-推荐路线：
+---
 
-1. 先保留当前短期记忆。
-2. 增加长期记忆接口。
-3. 每轮对话结束后写入摘要或事实。
-4. 下一轮对话开始前检索相关记忆。
-5. 把检索结果注入 system prompt 或上下文。
+<a id="commands"></a>
 
-## 当前依赖
+## 常用命令
 
-运行依赖在：
+| 目标 | 命令 |
+|---|---|
+| 激活虚拟环境 | `.\.venv\Scripts\Activate.ps1` |
+| 安装开发依赖 | `pip install -r requirements-dev.txt` |
+| 运行 Agent | `python app.py` |
+| 运行测试 | `python -m pytest -q` |
+| 拉取默认模型 | `ollama pull qwen3:4b` |
+| 查看 Ollama 模型 | `ollama list` |
 
-```text
-requirements.txt
+[回到顶部](#top)
+
+---
+
+<a id="tests"></a>
+
+## 测试
+
+运行：
+
+```powershell
+python -m pytest -q
 ```
 
-开发依赖在：
+当前测试覆盖：
 
-```text
-requirements-dev.txt
-```
+- calculator 正常计算。
+- calculator 拒绝危险表达式。
+- 默认配置加载。
+- MCP 配置加载。
 
-核心依赖包括：
+[回到顶部](#top)
 
-- `langgraph`
-- `langchain`
-- `langchain-core`
-- `langchain-ollama`
-- `langchain-openai`
-- `langchain-mcp-adapters`
-- `mcp`
-- `pydantic`
-- `python-dotenv`
+---
 
-测试依赖：
-
-- `pytest`
-
-## 当前验证状态
-
-当前项目已验证：
-
-```text
-pytest: 5 passed
-compileall: passed
-MCP example tools: add, multiply loaded
-LangGraph graph: compiled successfully
-```
+<a id="faq"></a>
 
 ## 常见问题
 
-### PowerShell 提示找不到 `ollama`
+### 每次运行都要激活虚拟环境吗？
 
-说明 Ollama 没有安装，或者没有加入系统 PATH。
+每次打开新的终端，都建议先激活：
 
-可以先执行：
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+如果命令行前面已经有 `(.venv)`，说明已经激活。
+
+### `requirements-dev.txt` 还需要同时安装 `requirements.txt` 吗？
+
+不需要。
+
+`requirements-dev.txt` 里已经包含：
+
+```text
+-r requirements.txt
+```
+
+所以执行：
+
+```powershell
+pip install -r requirements-dev.txt
+```
+
+会自动先安装运行依赖，再安装测试依赖。
+
+### PowerShell 找不到 `ollama`
+
+先检查：
 
 ```powershell
 ollama --version
 ```
 
-如果仍然找不到，请重新安装 Ollama，或者重启 PowerShell。
+如果找不到，说明 Ollama 没安装好，或者没有加入 PATH。安装后建议重启 PowerShell。
 
-### 运行 Agent 时提示模型不存在
+### 工具数量为什么不是 3？
 
-需要先拉取模型：
-
-```powershell
-ollama pull qwen3:4b
-```
-
-### 工具数量不是 3
-
-默认情况下工具包括：
+默认工具包括：
 
 - 内置 `calculator`
 - MCP `add`
 - MCP `multiply`
 
-如果工具数量是 1，通常表示 MCP 没有加载。检查：
+如果只看到 1 个工具，一般是 MCP 没有加载。检查：
 
 ```text
 mcp_servers.json
@@ -778,47 +548,60 @@ MCP_CONFIG_PATH
 examples/mcp_math_server.py
 ```
 
-### 为什么短期记忆重启后消失
+[回到顶部](#top)
 
-因为当前使用的是 `InMemorySaver`，它只保存在当前进程内。
+---
 
-如果需要重启后仍然保留，需要实现长期记忆。
+<a id="docs"></a>
 
-### 为什么要有 `interfaces/`
+## 更多文档
 
-因为 Agent 项目后续很容易更换模型、工具协议、执行框架。
+| 文档 | 用途 |
+|---|---|
+| `ARCHITECTURE.md` | 快速理解代码结构和分层关系 |
+| `Agent架构图.puml` | PlantUML 架构图 |
 
-`interfaces/` 的作用是稳定核心契约，让核心代码不被具体框架绑死。
+[回到顶部](#top)
 
-### 为什么不直接把所有逻辑写在 `app.py`
+---
 
-小 demo 可以这样写，但后续会很难扩展。
+<a id="scope"></a>
 
-当前分层的好处是：
+## 当前边界
 
-- 模型后端可以替换。
-- 工具来源可以替换。
-- 记忆策略可以替换。
-- 执行策略可以替换。
-- 测试更容易写。
+已具备：
 
-## 后续可扩展方向
+- CLI Agent
+- LangGraph ReAct 图
+- Ollama 本地模型接入
+- OpenAI-compatible 预留接入
+- 短期记忆
+- 内置计算器工具
+- MCP 工具加载
+- 基础测试
 
-可以继续扩展：
+暂未实现：
 
-- Plan&Execute 策略。
-- Hybrid 策略：轻量规划 + ReAct 执行 + 反思。
-- 长期记忆。
-- 向量检索记忆。
-- Web 搜索 MCP 工具。
-- 天气 MCP 工具。
-- 文件读写工具。
-- 更完整的 CLI 参数。
-- Web UI 或 API server。
+- 长期记忆
+- 向量数据库
+- Web UI
+- HTTP API server
+- 真实搜索工具
+- 真实天气工具
+- 完整 Plan&Execute 策略
 
-建议优先顺序：
+[回到顶部](#top)
 
-1. 先跑通 Ollama + ReAct + calculator。
-2. 再确认 MCP 工具加载稳定。
-3. 然后增加真实业务工具。
-4. 最后再加长期记忆和复杂规划。
+---
+
+<a id="next"></a>
+
+## 推荐下一步
+
+1. 先跑通 `python app.py`。
+2. 用 calculator 验证工具调用。
+3. 确认 MCP 的 `add`、`multiply` 可以加载。
+4. 再添加你的业务工具。
+5. 最后再考虑长期记忆和复杂规划。
+
+[回到顶部](#top)

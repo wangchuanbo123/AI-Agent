@@ -1,313 +1,262 @@
-# 项目架构速览
+<a id="top"></a>
 
-这份文档用于快速理解当前 Agent 项目的代码结构。它比 README 更偏“代码导览”：告诉你每一层做什么、每个文件夹放什么、一次请求如何流转，以及后续想改功能应该从哪里入手。
+# 架构导览
 
-## 一句话理解这个项目
+> README 负责告诉你“怎么安装和运行”。这份文档负责告诉你“代码为什么这样分层，以及应该从哪里读起”。
 
-这是一个基于 LangGraph 的本地 Agent 骨架：
+---
 
-```text
-用户输入 -> Agent 推理 -> 必要时调用工具 -> 读取工具结果 -> 输出最终答案
-```
+## 目录
 
-当前默认模型是本地 Ollama：
+- [心智模型](#mental-model)
+- [总体流程图](#flow)
+- [分层总览](#layers)
+- [入口层](#application)
+  - [`app.py`](#app-py)
+  - [`config.py`](#config-py)
+- [抽象层：`interfaces/`](#interfaces)
+- [核心层：`core/`](#core)
+- [适配层：`adapters/`](#adapters)
+  - [`adapters/langgraph/`](#adapter-langgraph)
+  - [`adapters/langchain/`](#adapter-langchain)
+  - [`adapters/mcp/`](#adapter-mcp)
+  - [`adapters/openai/`](#adapter-openai)
+- [能力层：工具、记忆、数据结构](#runtime)
+  - [`tools/`](#tools)
+  - [`memory/`](#memory)
+  - [`schemas/`](#schemas)
+- [示例和测试](#examples-tests)
+- [推荐阅读顺序](#reading)
+- [修改功能时看哪里](#change-map)
+- [当前项目边界](#scope)
+- [架构原则](#principles)
+- [配套架构图](#diagram)
 
-```text
-qwen3:4b
-```
+---
 
-当前默认执行策略是 ReAct：
+<a id="mental-model"></a>
 
-```text
-Reason -> Act -> Observe -> Reason -> Final Answer
-```
+## 心智模型
 
-## 最重要的三个问题
-
-### 1. 入口在哪里？
-
-入口是：
-
-```text
-app.py
-```
-
-它负责把配置、模型、记忆、工具、MCP 和 LangGraph 图组装起来，然后启动 CLI。
-
-### 2. Agent 核心在哪里？
-
-核心门面在：
-
-```text
-core/agent.py
-```
-
-这里的 `LangGraphAgent` 负责调用编译后的 LangGraph 图，并把最终结果包装成 `AgentResult`。
-
-### 3. LangGraph 流程在哪里？
-
-图构建逻辑在：
+这个项目可以简单理解为：
 
 ```text
-adapters/langgraph/graph.py
+app.py 负责组装
+core/ 负责 Agent 门面
+adapters/ 负责接框架和外部协议
+tools/ 负责工具
+memory/ 负责记忆
+schemas/ 负责数据结构
+interfaces/ 负责稳定抽象
 ```
 
-这里定义了 ReAct 图：
+也就是：
 
 ```text
-START -> agent -> tools_condition
-tools_condition -> tools -> agent
-tools_condition -> END
+入口层 -> 抽象层 -> 核心层 -> 适配层 -> 能力层 -> 外部服务
 ```
 
-## 分层架构
+[回到顶部](#top)
 
-项目可以按 6 层理解：
+---
 
-```text
-Application 入口层
-    |
-Interfaces 抽象层
-    |
-Core 核心层
-    |
-Adapters 适配层
-    |
-Runtime 能力层
-    |
-External 外部服务
-```
+<a id="flow"></a>
 
-更贴近代码的关系是：
-
-```text
-app.py
-  |
-  |-- config.py
-  |-- interfaces/
-  |-- core/
-  |-- adapters/
-  |-- tools/
-  |-- memory/
-  `-- schemas/
-```
-
-## 各层和文件夹关系
-
-| 架构层 | 对应文件夹/文件 | 主要职责 |
-|---|---|---|
-| Application 入口层 | `app.py`, `config.py` | 启动程序、读取配置、组装所有组件 |
-| Interfaces 抽象层 | `interfaces/` | 定义 Agent、LLM、Tool、Memory、Executor 的稳定协议 |
-| Core 核心层 | `core/` | 包装 Agent 行为、状态、上下文和执行策略 |
-| Adapters 适配层 | `adapters/` | 接入 LangGraph、LangChain、Ollama、OpenAI-compatible、MCP |
-| Runtime 能力层 | `tools/`, `memory/`, `schemas/` | 提供工具、记忆实现和数据结构 |
-| Examples/Tests | `examples/`, `tests/` | 示例 MCP server 和单元测试 |
-| External 外部服务 | Ollama, MCP server, OpenAI-compatible API | 真正的模型服务和外部工具服务 |
-
-## 一次请求的完整流转
-
-用户在 CLI 输入问题后，请求大致这样流动：
-
-```text
-1. app.py 读取用户输入
-2. app.py 调用 LangGraphAgent.ainvoke(...)
-3. LangGraphAgent 把用户消息交给 CompiledStateGraph
-4. LangGraph 的 agent_node 调用 LLM
-5. LLM 判断是否需要工具
-6. 如果不需要工具，直接返回最终答案
-7. 如果需要工具，tools_condition 路由到 ToolNode
-8. ToolNode 调用 calculator 或 MCP 工具
-9. 工具结果作为 Observation 回到 LLM
-10. LLM 继续推理并输出最终答案
-```
-
-可以简化成：
+## 总体流程图
 
 ```text
 User
-  -> app.py
-  -> core/LangGraphAgent
-  -> adapters/langgraph/ReAct Graph
-  -> adapters/langchain/LLM
-  -> tools 或 MCP tools
-  -> AgentResult
+  |
+  v
+app.py
+  |
+  +-- config.py
+  +-- memory/short_term.py
+  +-- adapters/langchain/llm.py
+  +-- adapters/mcp/client.py
+  |
+  v
+adapters/langgraph/graph.py
+  |
+  v
+core/agent.py
+  |
+  v
+AgentResult
 ```
 
-## 根目录文件说明
+更细一点的运行链路：
+
+```text
+用户输入
+  -> app.py
+  -> LangGraphAgent.ainvoke(...)
+  -> CompiledStateGraph
+  -> agent_node 调用 LLM
+  -> tools_condition 判断是否需要工具
+  -> ToolNode 调用 calculator 或 MCP tools
+  -> 工具结果回到 LLM
+  -> 输出最终答案
+```
+
+[回到顶部](#top)
+
+---
+
+<a id="layers"></a>
+
+## 分层总览
+
+| 层 | 位置 | 解决的问题 |
+|---|---|---|
+| Application | `app.py`, `config.py` | 程序如何启动，运行时组件如何组装 |
+| Interfaces | `interfaces/` | 各组件之间遵守什么契约 |
+| Core | `core/` | Agent 对外表现成什么样 |
+| Adapters | `adapters/` | 如何接入 LangGraph、LangChain、MCP、模型后端 |
+| Runtime | `tools/`, `memory/`, `schemas/` | Agent 能调用什么、记住什么、传递什么数据 |
+| Examples | `examples/` | 如何写一个外部 MCP server |
+| Tests | `tests/` | 如何验证关键功能 |
+
+[回到顶部](#top)
+
+---
+
+<a id="application"></a>
+
+## 入口层
+
+<a id="app-py"></a>
 
 ### `app.py`
 
-项目运行入口。
+这是项目入口。它的职责是“组装”，不是写复杂业务逻辑。
 
-它做这些事：
+它会按顺序做这些事：
 
-- 读取 `.env` 配置。
-- 创建短期记忆。
-- 创建模型。
-- 加载内置工具。
-- 加载 MCP 工具。
-- 构建 LangGraph 图。
-- 启动命令行交互。
+```text
+1. 读取 Settings
+2. 创建短期记忆
+3. 创建聊天模型
+4. 加载 MCP 工具
+5. 合并内置工具和 MCP 工具
+6. 构建 LangGraph ReAct 图
+7. 包装成 LangGraphAgent
+8. 启动 CLI 循环
+```
 
-看懂 `app.py`，基本就能知道项目如何启动。
+你想看项目怎么跑起来，就先看 `app.py`。
+
+<a id="config-py"></a>
 
 ### `config.py`
 
-配置模块。
+这里定义 `Settings`，集中管理配置。
 
-核心类是：
-
-```text
-Settings
-```
-
-它从 `.env` 和环境变量读取：
-
-- `MODEL_PROVIDER`
-- `OLLAMA_MODEL`
-- `OLLAMA_BASE_URL`
-- `OPENAI_COMPATIBLE_*`
-- `AGENT_THREAD_ID`
-- `MCP_CONFIG_PATH`
-
-### `requirements.txt`
-
-运行项目需要的依赖。
-
-包括：
-
-- LangGraph
-- LangChain
-- Ollama adapter
-- OpenAI adapter
-- MCP adapter
-- Pydantic
-- dotenv
-
-### `requirements-dev.txt`
-
-开发和测试依赖。
-
-当前主要增加：
-
-```text
-pytest
-```
-
-### `.env.example`
-
-配置模板。
-
-新环境中可以复制成：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-### `mcp_servers.json`
-
-本地 MCP server 配置。
-
-当前指向：
-
-```text
-examples/mcp_math_server.py
-```
-
-用于加载示例 MCP 工具 `add` 和 `multiply`。
-
-### `Agent架构图.puml`
-
-PlantUML 架构图。
-
-适合用来从图形角度理解项目分层。
-
-## `interfaces/`：稳定抽象层
-
-这个目录定义“项目内部承诺使用什么接口”。
-
-它不是具体实现，而是约定。
-
-| 文件 | 作用 |
+| 配置 | 作用 |
 |---|---|
-| `agent.py` | 定义 Agent 应该具备的 `ainvoke` 调用接口 |
-| `llm.py` | 定义模型工厂和可绑定工具的 LLM 能力 |
-| `memory.py` | 定义短期记忆如何根据 `thread_id` 生成配置 |
-| `tool.py` | 定义工具最小协议 |
-| `executor.py` | 定义执行器协议 |
+| `MODEL_PROVIDER` | 模型提供方，默认 `ollama` |
+| `OLLAMA_MODEL` | Ollama 模型名，默认 `qwen3:4b` |
+| `OLLAMA_BASE_URL` | Ollama 服务地址 |
+| `OPENAI_COMPATIBLE_*` | OpenAI-compatible API 配置 |
+| `AGENT_THREAD_ID` | 默认短期记忆线程 |
+| `MCP_CONFIG_PATH` | MCP 配置文件路径 |
 
-为什么需要这一层？
+[回到顶部](#top)
 
-因为以后你可能要换：
+---
 
-- LangGraph -> 其他 Agent 框架
-- Ollama -> 云端模型
-- 本地工具 -> MCP 工具
-- 短期记忆 -> 长期记忆
+<a id="interfaces"></a>
 
-有 `interfaces/` 之后，核心代码可以少依赖具体框架。
+## 抽象层：`interfaces/`
 
-## `core/`：Agent 核心层
+这一层定义“项目内部希望各组件长什么样”。
 
-这个目录放 Agent 本身的核心概念。
+| 文件 | 定义 | 说明 |
+|---|---|---|
+| `agent.py` | `Agent` | Agent 统一调用接口 |
+| `llm.py` | `LLMFactory`, `ToolBindableLLM` | 模型创建和工具绑定能力 |
+| `memory.py` | `ShortTermMemory` | 短期记忆契约 |
+| `tool.py` | `Tool` | 工具最小协议 |
+| `executor.py` | `Executor` | 动作执行器契约 |
+
+这一层的价值是：以后换框架、换模型、换工具系统时，核心逻辑不需要跟着大改。
+
+[回到顶部](#top)
+
+---
+
+<a id="core"></a>
+
+## 核心层：`core/`
+
+这一层放 Agent 的核心概念。
 
 | 文件/目录 | 作用 |
 |---|---|
-| `agent.py` | 定义 `LangGraphAgent`，把 LangGraph 图包装成统一 Agent |
-| `state.py` | 定义图里流转的消息状态 |
-| `context.py` | 定义会话上下文 |
-| `controller.py` | 定义执行策略，目前是 `REACT` |
-| `reasoning/` | 预留 planner、reflector 等推理组件 |
-| `executor/` | 预留自定义执行器 |
+| `agent.py` | `LangGraphAgent`，把图包装成统一 Agent |
+| `state.py` | 图中流转的消息状态 |
+| `context.py` | 会话上下文 |
+| `controller.py` | 执行策略枚举，目前是 `REACT` |
+| `reasoning/` | 规划、反思等未来能力预留 |
+| `executor/` | 自定义执行器预留 |
 
-当前真正关键的是：
+当前最重要的是：
 
 ```text
 core/agent.py
 ```
 
-它不直接创建模型，不直接加载工具，只负责调用已经组装好的 graph。
+它只做一件事：调用已经编译好的 LangGraph 图，并提取最后的 AI 回复。
 
-## `adapters/`：框架和协议适配层
+[回到顶部](#top)
 
-这个目录负责“接外部世界”。
+---
 
-外部世界包括：
+<a id="adapters"></a>
 
-- LangGraph
-- LangChain
-- Ollama
-- OpenAI-compatible API
-- MCP
+## 适配层：`adapters/`
+
+这一层负责“和外部框架打交道”。
+
+<a id="adapter-langgraph"></a>
 
 ### `adapters/langgraph/`
 
-负责 LangGraph 图编排。
-
-关键文件：
+核心文件：
 
 ```text
 adapters/langgraph/graph.py
 ```
 
-里面的核心函数：
+核心函数：
 
 ```text
 build_react_graph(...)
 ```
 
-它负责创建：
+它构建 ReAct 图：
 
-- `agent` 节点
-- `tools` 节点
-- `tools_condition` 条件边
-- graph checkpoint
+```text
+START
+  -> agent
+  -> tools_condition
+      -> tools
+      -> agent
+      -> END
+```
+
+| 组件 | 作用 |
+|---|---|
+| `agent_node` | 调用 LLM 推理 |
+| `tools_condition` | 判断模型是否发起工具调用 |
+| `ToolNode` | 执行工具 |
+| `checkpointer` | 接入短期记忆 |
+
+<a id="adapter-langchain"></a>
 
 ### `adapters/langchain/`
 
-负责创建模型。
-
-关键文件：
+核心文件：
 
 ```text
 adapters/langchain/llm.py
@@ -319,122 +268,122 @@ adapters/langchain/llm.py
 create_chat_model(settings)
 ```
 
-根据配置返回：
+| provider | 返回模型 |
+|---|---|
+| `ollama` | `ChatOllama` |
+| `openai_compatible` | `ChatOpenAI` |
 
-- `ChatOllama`
-- 或 `ChatOpenAI`
+<a id="adapter-mcp"></a>
 
 ### `adapters/mcp/`
 
-负责加载 MCP 工具。
-
-关键文件：
+核心文件：
 
 ```text
 adapters/mcp/client.py
 ```
 
-它会读取：
+它做三件事：
 
 ```text
-mcp_servers.json
+1. 读取 mcp_servers.json
+2. 创建 MultiServerMCPClient
+3. 返回 LangChain 可用的 MCP tools
 ```
 
-然后通过 `MultiServerMCPClient` 加载工具。
+如果配置文件不存在，会返回空工具列表，不影响 Agent 启动。
 
-如果配置文件不存在，MCP 会被自动跳过，Agent 仍然可以运行。
+<a id="adapter-openai"></a>
 
 ### `adapters/openai/`
 
-当前只是预留目录。
+目前是预留目录。
 
-OpenAI-compatible 模型暂时通过：
+OpenAI-compatible 的基础接入已经在 `adapters/langchain/llm.py` 中完成。
 
-```text
-adapters/langchain/llm.py
-```
+[回到顶部](#top)
 
-创建。
+---
 
-## `tools/`：内置工具层
+<a id="runtime"></a>
 
-这个目录放项目自带工具。
+## 能力层：工具、记忆、数据结构
 
-| 文件 | 作用 |
-|---|---|
-| `calculator.py` | 已实现：安全计算基础算术表达式 |
-| `search.py` | 占位：后续可接搜索工具 |
-| `weather.py` | 占位：后续可接天气工具 |
+<a id="tools"></a>
 
-当前 `calculator` 是第一个可用工具。
+### `tools/`
 
-它使用 LangChain 的 `@tool` 包装，因此 LangGraph 的 `ToolNode` 可以直接调用它。
+| 文件 | 状态 | 作用 |
+|---|---|---|
+| `calculator.py` | 已实现 | 安全计算基础算术表达式 |
+| `search.py` | 占位 | 后续可接搜索 |
+| `weather.py` | 占位 | 后续可接天气 |
 
-## `memory/`：记忆层
+`calculator.py` 使用 `@tool` 包装，所以 LangGraph 的 `ToolNode` 可以直接调用。
 
-这个目录放记忆相关实现。
+<a id="memory"></a>
 
-| 文件 | 作用 |
-|---|---|
-| `short_term.py` | 已实现：基于 LangGraph `InMemorySaver` 的短期记忆 |
-| `working_memory.py` | 预留：工作记忆 |
-| `long_term.py` | 预留：长期记忆 |
-| `vector_store.py` | 预留：向量记忆 |
+### `memory/`
 
-当前真正生效的是：
+| 文件 | 状态 | 作用 |
+|---|---|---|
+| `short_term.py` | 已实现 | 基于 `InMemorySaver` 的短期记忆 |
+| `working_memory.py` | 预留 | 工作记忆 |
+| `long_term.py` | 预留 | 长期记忆 |
+| `vector_store.py` | 预留 | 向量记忆 |
 
-```text
-memory/short_term.py
-```
-
-短期记忆依赖：
+短期记忆的核心是：
 
 ```text
-thread_id
+thread_id -> InMemorySaver -> messages state
 ```
 
-同一个 `thread_id` 会保留同一段会话上下文。
+同一个 `thread_id` 共享同一段会话上下文。
 
-## `schemas/`：数据结构层
+<a id="schemas"></a>
 
-这个目录放统一的数据结构。
+### `schemas/`
 
-| 文件 | 作用 |
-|---|---|
-| `task.py` | 用户任务输入结构 |
-| `action.py` | 工具动作结构 |
-| `observation.py` | 工具观察结果结构 |
-| `result.py` | Agent 最终返回结果 |
-| `plan.py` | 计划结构，后续 Plan&Execute 使用 |
+| 文件 | 数据结构 | 用途 |
+|---|---|---|
+| `task.py` | `AgentTask` | 用户输入任务 |
+| `action.py` | `AgentAction` | 工具动作 |
+| `observation.py` | `Observation` | 工具返回观察 |
+| `result.py` | `AgentResult` | Agent 最终结果 |
+| `plan.py` | `Plan`, `PlanStep` | 后续规划能力 |
 
-这些 schema 的作用是让不同层之间的数据更清楚。
+这些结构让各层之间传递的数据更清楚。
 
-## `examples/`：示例层
+[回到顶部](#top)
 
-当前只有一个示例：
+---
+
+<a id="examples-tests"></a>
+
+## 示例和测试
+
+### `examples/`
+
+当前示例：
 
 ```text
 examples/mcp_math_server.py
 ```
 
-它是一个很小的 MCP server，暴露两个工具：
+提供两个 MCP 工具：
 
 ```text
 add
 multiply
 ```
 
-用于验证 MCP 接入是否正常。
-
-## `tests/`：测试层
-
-当前测试覆盖：
+### `tests/`
 
 | 文件 | 测试内容 |
 |---|---|
-| `test_calculator.py` | 计算器正确计算，且拒绝危险表达式 |
-| `test_config.py` | 默认配置是否正确 |
-| `test_mcp_config.py` | MCP 配置加载是否正确 |
+| `test_calculator.py` | 计算器正常表达式和危险表达式 |
+| `test_config.py` | 默认配置 |
+| `test_mcp_config.py` | MCP 配置加载 |
 
 运行：
 
@@ -442,136 +391,69 @@ multiply
 python -m pytest -q
 ```
 
-## `utils/`：工具函数预留层
+[回到顶部](#top)
 
-当前没有实际逻辑。
+---
 
-以后如果有多个模块都会用到的纯辅助函数，可以放这里。
+<a id="reading"></a>
 
-例如：
+## 推荐阅读顺序
 
-- 日志格式化
-- 通用文本处理
-- 路径处理
-- 时间处理
-
-## 代码阅读建议
-
-如果你是第一次看这个项目，建议按这个顺序读：
+第一次看项目，推荐这样读：
 
 ```text
-1. README.md
-2. ARCHITECTURE.md
-3. app.py
-4. config.py
-5. adapters/langgraph/graph.py
-6. adapters/langchain/llm.py
-7. memory/short_term.py
-8. tools/calculator.py
-9. adapters/mcp/client.py
-10. core/agent.py
+1. app.py
+2. config.py
+3. adapters/langgraph/graph.py
+4. adapters/langchain/llm.py
+5. memory/short_term.py
+6. tools/calculator.py
+7. adapters/mcp/client.py
+8. core/agent.py
+9. schemas/
+10. interfaces/
 ```
 
-如果只想快速理解运行链路，可以看：
+如果只想理解主流程：
 
 ```text
-app.py -> adapters/langgraph/graph.py -> core/agent.py
-```
-
-## 想新增功能时看哪里
-
-### 新增一个内置工具
-
-看：
-
-```text
-tools/calculator.py
 app.py
+  -> adapters/langgraph/graph.py
+  -> adapters/langchain/llm.py
+  -> tools/calculator.py
+  -> core/agent.py
 ```
 
-做法：
+[回到顶部](#top)
 
-1. 在 `tools/` 新建工具文件。
-2. 用 `@tool` 包装函数。
-3. 在 `app.py` 中加入工具列表。
+---
 
-### 新增一个 MCP 工具
+<a id="change-map"></a>
 
-看：
+## 修改功能时看哪里
 
-```text
-mcp_servers.json
-examples/mcp_math_server.py
-adapters/mcp/client.py
-```
+| 你想做什么 | 优先看哪里 |
+|---|---|
+| 新增内置工具 | `tools/calculator.py`, `app.py` |
+| 新增 MCP 工具 | `mcp_servers.json`, `adapters/mcp/client.py` |
+| 更换 Ollama 模型 | `.env`, `config.py` |
+| 接 OpenAI-compatible API | `.env`, `adapters/langchain/llm.py` |
+| 改 ReAct 流程 | `adapters/langgraph/graph.py` |
+| 增加长期记忆 | `memory/long_term.py`, `interfaces/memory.py` |
+| 增加规划能力 | `core/controller.py`, `core/reasoning/`, `schemas/plan.py` |
+| 调整返回结构 | `schemas/result.py`, `core/agent.py` |
 
-做法：
+[回到顶部](#top)
 
-1. 准备 MCP server。
-2. 在 `mcp_servers.json` 中配置 server。
-3. 启动 Agent，MCP 工具会自动加载。
+---
 
-### 更换模型
-
-看：
-
-```text
-.env
-config.py
-adapters/langchain/llm.py
-```
-
-如果仍然用 Ollama，只改：
-
-```text
-OLLAMA_MODEL=模型名
-```
-
-如果用 OpenAI-compatible API，需要改：
-
-```text
-MODEL_PROVIDER=openai_compatible
-OPENAI_COMPATIBLE_MODEL=...
-OPENAI_COMPATIBLE_BASE_URL=...
-OPENAI_COMPATIBLE_API_KEY=...
-```
-
-### 增加长期记忆
-
-看：
-
-```text
-memory/long_term.py
-memory/vector_store.py
-interfaces/memory.py
-```
-
-推荐思路：
-
-1. 保留当前短期记忆。
-2. 增加长期记忆接口。
-3. 每轮对话后写入摘要或事实。
-4. 下一轮对话前检索相关记忆。
-5. 把检索结果加入上下文。
-
-### 增加 Plan&Execute
-
-看：
-
-```text
-core/controller.py
-core/reasoning/
-schemas/plan.py
-adapters/langgraph/graph.py
-```
-
-当前第一版只做 ReAct，Plan&Execute 还没有接入主流程。
+<a id="scope"></a>
 
 ## 当前项目边界
 
-当前已经有：
+已实现：
 
-- 可运行 CLI。
+- CLI 启动。
 - LangGraph ReAct 图。
 - Ollama 模型接入。
 - OpenAI-compatible 预留接入。
@@ -581,54 +463,58 @@ adapters/langgraph/graph.py
 - MCP 示例 server。
 - 基础测试。
 
-当前还没有：
+暂未实现：
 
 - 长期记忆。
-- 向量数据库。
+- 向量检索。
 - Web UI。
 - HTTP API server。
-- 真正的搜索工具。
-- 真正的天气工具。
+- 真实搜索工具。
+- 真实天气工具。
 - 完整 Plan&Execute。
 - 生产级日志和监控。
 
-## 最小运行命令
+[回到顶部](#top)
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-python app.py
-```
+---
 
-如果是全新环境：
+<a id="principles"></a>
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-ollama pull qwen3:4b
-python app.py
-```
+## 架构原则
 
-## 总结
-
-这个项目的核心思路是：
+这个项目遵循几个简单原则：
 
 ```text
-核心逻辑保持简单
-外部框架放进 adapters
-工具和记忆放进 runtime 层
-接口协议放进 interfaces
-数据结构放进 schemas
+入口只负责组装
+核心只负责 Agent 行为
+适配器负责接外部框架
+工具和记忆独立扩展
+数据结构集中定义
+接口层稳定边界
 ```
 
-所以你可以把它理解成一个“可扩展 Agent 骨架”：
+这样做的好处是：
+
+- 后续换模型更容易。
+- 后续换工具来源更容易。
+- 后续加长期记忆更容易。
+- 后续把 CLI 改成 API 服务也更容易。
+- 测试更容易写。
+
+[回到顶部](#top)
+
+---
+
+<a id="diagram"></a>
+
+## 配套架构图
+
+更完整的图在：
 
 ```text
-app.py 负责组装
-core/ 负责 Agent 门面
-adapters/ 负责接框架
-tools/ 负责工具
-memory/ 负责记忆
-schemas/ 负责数据结构
-interfaces/ 负责稳定抽象
+Agent架构图.puml
 ```
+
+可以用 PlantUML 渲染查看。
+
+[回到顶部](#top)
