@@ -21,11 +21,11 @@ ModelProvider = Literal["ollama", "openai_compatible"]
 class Settings:
     """从环境变量加载的运行时配置。"""
 
-    model_provider: ModelProvider = "ollama"
+    model_provider: ModelProvider = "openai_compatible"
     ollama_model: str = "qwen3:4b"
     ollama_base_url: str = "http://localhost:11434"
-    openai_compatible_model: str = ""
-    openai_compatible_base_url: str = ""
+    openai_compatible_model: str = "glm-5-turbo"
+    openai_compatible_base_url: str = "https://api.iruidong.com/v1"
     openai_compatible_api_key: str = ""
     agent_temperature: float = 0.0
     default_thread_id: str = "default"

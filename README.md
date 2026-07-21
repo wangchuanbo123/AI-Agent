@@ -6,8 +6,8 @@
 
 </div>
 
-基于 LangGraph 的本地 Agent 骨架  
-支持 Ollama、本地工具、短期记忆和 MCP 外部工具接入
+基于 LangGraph 的可扩展 Agent 骨架<br>
+默认接入 GLM Coding Pro，并支持 Ollama、本地工具、短期记忆和 MCP 外部工具
 
 ---
 
@@ -20,7 +20,7 @@
   - [2. 创建虚拟环境](#step-venv)
   - [3. 激活虚拟环境](#step-activate)
   - [4. 安装依赖](#step-install)
-  - [5. 安装 Ollama 并拉取模型](#step-ollama)
+  - [5. 准备 GLM Coding Pro API Key](#step-ollama)
   - [6. 准备配置文件](#step-env)
   - [7. 运行 Agent](#step-run)
 - [最小命令清单](#commands-min)
@@ -72,7 +72,7 @@
 |---|---|
 | Agent 框架 | LangGraph |
 | 执行策略 | ReAct |
-| 默认模型 | Ollama `qwen3:4b` |
+| 默认模型 | GLM Coding Pro `glm-5-turbo` |
 | Python 版本 | 推荐 Python 3.12，已验证 3.12.10 |
 | 工具系统 | 内置工具 + MCP 工具 |
 | 默认工具 | `calculator`、MCP 示例 `add`、`multiply` |
@@ -84,7 +84,7 @@
 
 - 跑通一个最小可用的本地 Agent。
 - 学习 LangGraph 的 ReAct 流程。
-- 使用 Ollama 本地模型。
+- 使用 GLM 云端模型，或切换到 Ollama 本地模型。
 - 添加自定义内置工具。
 - 通过 MCP 接入外部工具。
 - 继续扩展长期记忆、搜索、天气、文件工具或 Web API。
@@ -97,7 +97,7 @@
 
 ## 快速开始
 
-下面命令适用于 Windows PowerShell。
+下面同时提供 Windows PowerShell 和 CMD 的命令。已经完成首次安装时，可以直接跳到[日常启动](#commands-min)。
 
 <a id="step-cd"></a>
 
@@ -105,6 +105,12 @@
 
 ```powershell
 cd D:\MyCode\AI-Agent
+```
+
+CMD 如果当前不在 `D:` 盘，请使用：
+
+```cmd
+cd /d D:\MyCode\AI-Agent
 ```
 
 <a id="step-venv"></a>
@@ -129,6 +135,12 @@ python -m venv .venv
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
+```
+
+CMD 使用：
+
+```cmd
+.venv\Scripts\activate.bat
 ```
 
 激活成功后，命令行前面会出现：
@@ -157,20 +169,11 @@ pip install -r requirements.txt
 
 <a id="step-ollama"></a>
 
-### 5. 安装 Ollama 并拉取模型
+### 5. 准备 GLM Coding Pro API Key
 
-安装 Ollama 后，拉取默认模型：
+登录套餐服务平台创建 API Key。请只把真实密钥写入本地 `.env`，不要写进代码、README 或 `.env.example`。
 
-```powershell
-ollama pull qwen3:4b
-```
-
-确认 Ollama 可用：
-
-```powershell
-ollama --version
-ollama list
-```
+> 不同套餐可能限制可用工具、调用场景和额度计算方式，具体以购买平台当前展示的规则为准。
 
 <a id="step-env"></a>
 
@@ -182,12 +185,19 @@ ollama list
 Copy-Item .env.example .env
 ```
 
-默认配置会使用：
+CMD 使用：
+
+```cmd
+copy .env.example .env
+```
+
+打开 `.env`，把 `OPENAI_COMPATIBLE_API_KEY` 填成你自己的密钥。默认模型配置为：
 
 ```text
-MODEL_PROVIDER=ollama
-OLLAMA_MODEL=qwen3:4b
-OLLAMA_BASE_URL=http://localhost:11434
+MODEL_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_MODEL=glm-5-turbo
+OPENAI_COMPATIBLE_BASE_URL=https://api.iruidong.com/v1
+OPENAI_COMPATIBLE_API_KEY=你的_API_Key
 ```
 
 <a id="step-run"></a>
@@ -201,7 +211,7 @@ python app.py
 启动成功后会看到类似输出：
 
 ```text
-Agent ready: provider=ollama, model=qwen3:4b, tools=3, thread=default
+Agent ready: provider=openai_compatible, model=glm-5-turbo, tools=3, thread=default
 Type 'exit' or 'quit' to stop. Use '/thread NAME' to switch memory thread.
 ```
 
@@ -225,15 +235,51 @@ exit
 
 ## 最小命令清单
 
-如果已经安装好 Python 3.12 和 Ollama，可以直接按顺序执行：
+### 日常启动：PowerShell
+
+项目已经安装完成后，每次打开新的 PowerShell 窗口只需要：
+
+```powershell
+cd D:\MyCode\AI-Agent
+.\.venv\Scripts\Activate.ps1
+python app.py
+```
+
+### 日常启动：CMD
+
+项目已经安装完成后，每次打开新的 CMD 窗口只需要：
+
+```cmd
+cd /d D:\MyCode\AI-Agent
+.venv\Scripts\activate.bat
+python app.py
+```
+
+如果命令行开头已经显示 `(.venv)`，说明虚拟环境已激活，可以直接运行 `python app.py`。
+
+### 首次安装：PowerShell
+
+只有第一次准备项目时才需要完整执行：
 
 ```powershell
 cd D:\MyCode\AI-Agent
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
-ollama pull qwen3:4b
 Copy-Item .env.example .env
+# 编辑 .env，填入 OPENAI_COMPATIBLE_API_KEY
+python app.py
+```
+
+### 首次安装：CMD
+
+```cmd
+cd /d D:\MyCode\AI-Agent
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r requirements-dev.txt
+copy .env.example .env
+rem 编辑 .env，填入 OPENAI_COMPATIBLE_API_KEY
 python app.py
 ```
 
@@ -330,7 +376,7 @@ Application 入口层
 | Core | `core/` | 封装 Agent 行为 |
 | Adapters | `adapters/` | 接入 LangGraph、LangChain、MCP、模型后端 |
 | Runtime | `tools/`, `memory/`, `schemas/` | 提供工具、记忆和数据结构 |
-| External | Ollama、MCP server、API 服务 | 外部模型和工具服务 |
+| External | GLM API、Ollama、MCP server | 外部模型和工具服务 |
 
 [回到顶部](#top)
 
@@ -410,24 +456,25 @@ multiply
 默认 `.env.example`：
 
 ```text
-MODEL_PROVIDER=ollama
+MODEL_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_MODEL=glm-5-turbo
+OPENAI_COMPATIBLE_BASE_URL=https://api.iruidong.com/v1
+OPENAI_COMPATIBLE_API_KEY=
+
 OLLAMA_MODEL=qwen3:4b
 OLLAMA_BASE_URL=http://localhost:11434
-
-OPENAI_COMPATIBLE_MODEL=
-OPENAI_COMPATIBLE_BASE_URL=
-OPENAI_COMPATIBLE_API_KEY=
 
 AGENT_TEMPERATURE=0
 AGENT_THREAD_ID=default
 MCP_CONFIG_PATH=mcp_servers.json
 ```
 
-### 切换 Ollama 模型
+### 切换到 Ollama 本地模型
 
-例如换成更小的模型：
+先把提供方改成 `ollama`，例如使用较小的模型：
 
 ```text
+MODEL_PROVIDER=ollama
 OLLAMA_MODEL=qwen3:1.7b
 ```
 
@@ -437,7 +484,7 @@ OLLAMA_MODEL=qwen3:1.7b
 ollama pull qwen3:1.7b
 ```
 
-### 切换到 OpenAI-compatible API
+### 切换到其他 OpenAI-compatible API
 
 ```text
 MODEL_PROVIDER=openai_compatible
@@ -458,12 +505,38 @@ OPENAI_COMPATIBLE_API_KEY=your-api-key
 
 | 目标 | 命令 |
 |---|---|
-| 激活虚拟环境 | `.\.venv\Scripts\Activate.ps1` |
+| PowerShell 激活虚拟环境 | `.\.venv\Scripts\Activate.ps1` |
+| CMD 激活虚拟环境 | `.venv\Scripts\activate.bat` |
+| 退出虚拟环境 | `deactivate` |
 | 安装开发依赖 | `pip install -r requirements-dev.txt` |
 | 运行 Agent | `python app.py` |
 | 运行测试 | `python -m pytest -q` |
-| 拉取默认模型 | `ollama pull qwen3:4b` |
+| 拉取可选本地模型 | `ollama pull qwen3:4b` |
 | 查看 Ollama 模型 | `ollama list` |
+
+Agent 运行后的交互命令：
+
+| 命令 | 作用 |
+|---|---|
+| `exit` 或 `quit` | 退出 Agent |
+| `/thread NAME` | 切换短期记忆会话，例如 `/thread project_a` |
+
+### 可选：在 CMD 中直接测试模型接口
+
+该命令绕过项目代码，用于检查 API 地址、Key 和模型是否可用：
+
+```cmd
+set "RUIDONG_API_KEY=你的_API_Key"
+curl.exe --request POST ^
+  --url https://api.iruidong.com/v1/messages ^
+  --header "Content-Type: application/json" ^
+  --header "Authorization: Bearer %RUIDONG_API_KEY%" ^
+  --header "anthropic-version: 2023-06-01" ^
+  --data "{\"model\":\"glm-5-turbo\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK only.\"}]}"
+set "RUIDONG_API_KEY="
+```
+
+每行末尾的 `^` 是 CMD 换行连接符，后面不能有空格。该测试使用 Anthropic 协议；项目本身使用 OpenAI 兼容协议。
 
 [回到顶部](#top)
 
@@ -524,7 +597,7 @@ pip install -r requirements-dev.txt
 
 ### PowerShell 找不到 `ollama`
 
-先检查：
+只有切换到 Ollama 本地模型时才需要安装 Ollama。先检查：
 
 ```powershell
 ollama --version
@@ -573,8 +646,9 @@ examples/mcp_math_server.py
 
 - CLI Agent
 - LangGraph ReAct 图
+- GLM Coding Pro OpenAI 兼容接口
 - Ollama 本地模型接入
-- OpenAI-compatible 预留接入
+- 其他 OpenAI-compatible 模型接入
 - 短期记忆
 - 内置计算器工具
 - MCP 工具加载

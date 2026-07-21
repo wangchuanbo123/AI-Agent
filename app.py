@@ -56,7 +56,10 @@ async def async_main() -> None:
             result = await agent.ainvoke(user_input, thread_id=thread_id)
         except Exception as exc:  # noqa: BLE001 - CLI 需要带上下文处理失败。
             print(f"Agent error: {exc}")
-            print("Check that Ollama is running and the configured model is pulled.")
+            print(
+                "请检查模型服务地址、模型名称和 API Key；"
+                "使用 Ollama 时还需确认本地服务已经启动。"
+            )
             continue
 
         print(f"Agent> {result.content}")

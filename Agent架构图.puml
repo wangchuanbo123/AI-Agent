@@ -1,5 +1,5 @@
 @startuml
-title AI Agent 分层架构图（LangGraph + Ollama + MCP）
+title AI Agent 分层架构图（LangGraph + GLM Coding Pro + MCP）
 
 top to bottom direction
 
@@ -57,8 +57,8 @@ package "4. Adapters 外部框架适配层" as AdapterLayer {
 
   package "LangChain 模型适配" as ModelAdapter {
     component "create_chat_model()\nadapters/langchain/llm.py" as ModelFactory
-    component "ChatOllama\n本地 Ollama 模型" as ChatOllama
-    component "ChatOpenAI\nOpenAI-compatible API" as ChatOpenAI
+    component "ChatOpenAI\n默认：GLM Coding Pro" as ChatOpenAI
+    component "ChatOllama\n可选：本地 Ollama" as ChatOllama
   }
 
   package "MCP 工具适配" as MCPAdapter {
@@ -91,8 +91,8 @@ package "5. Runtime 能力层" as RuntimeLayer {
 }
 
 package "6. External Services 外部运行环境" as ExternalLayer {
-  node "Ollama Server\nlocalhost:11434\nqwen3:4b" as OllamaServer
-  node "OpenAI-compatible API\n可选云端模型" as OpenAIAPI
+  node "GLM Coding Pro API\nglm-5-turbo\n默认云端模型" as GLMAPI
+  node "Ollama Server\nqwen3:4b\n可选本地模型" as OllamaServer
   node "MCP Server\nexamples/mcp_math_server.py\n或其他外部工具服务" as MCPServer
 }
 
@@ -124,7 +124,7 @@ AgentNode -right-> ModelFactory : ainvoke(messages)
 ModelFactory -down-> ChatOllama : provider=ollama
 ModelFactory -down-> ChatOpenAI : provider=openai_compatible
 ChatOllama -down-> OllamaServer : HTTP 本地推理
-ChatOpenAI -down-> OpenAIAPI : OpenAI-compatible 请求
+ChatOpenAI -down-> GLMAPI : OpenAI-compatible 请求
 
 ' 工具路由。
 ToolNode -right-> Calculator : 内置工具
@@ -151,7 +151,7 @@ legend right
   设计原则：
   1. Application 只负责组装和启动。
   2. Core 只依赖抽象和图结果。
-  3. Adapters 隔离 LangGraph、LangChain、Ollama、MCP。
+  3. Adapters 隔离 LangGraph、LangChain、模型服务与 MCP。
   4. Runtime 层承载工具、记忆和数据结构。
 endlegend
 

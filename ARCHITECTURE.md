@@ -154,10 +154,11 @@ AgentResult
 
 | 配置 | 作用 |
 |---|---|
-| `MODEL_PROVIDER` | 模型提供方，默认 `ollama` |
-| `OLLAMA_MODEL` | Ollama 模型名，默认 `qwen3:4b` |
-| `OLLAMA_BASE_URL` | Ollama 服务地址 |
-| `OPENAI_COMPATIBLE_*` | OpenAI-compatible API 配置 |
+| `MODEL_PROVIDER` | 模型提供方，默认 `openai_compatible` |
+| `OPENAI_COMPATIBLE_MODEL` | 默认 `glm-5-turbo` |
+| `OPENAI_COMPATIBLE_BASE_URL` | 默认使用 GLM Coding Pro 的 OpenAI 兼容端点 |
+| `OPENAI_COMPATIBLE_API_KEY` | 模型服务 API Key，只应保存在本地 `.env` |
+| `OLLAMA_*` | 可选的 Ollama 本地模型配置 |
 | `AGENT_THREAD_ID` | 默认短期记忆线程 |
 | `MCP_CONFIG_PATH` | MCP 配置文件路径 |
 
@@ -299,7 +300,7 @@ adapters/mcp/client.py
 
 目前是预留目录。
 
-OpenAI-compatible 的基础接入已经在 `adapters/langchain/llm.py` 中完成。
+GLM 和其他 OpenAI-compatible 服务的基础接入已经在 `adapters/langchain/llm.py` 中完成。
 
 [回到顶部](#top)
 
@@ -436,8 +437,9 @@ app.py
 |---|---|
 | 新增内置工具 | `tools/calculator.py`, `app.py` |
 | 新增 MCP 工具 | `mcp_servers.json`, `adapters/mcp/client.py` |
-| 更换 Ollama 模型 | `.env`, `config.py` |
-| 接 OpenAI-compatible API | `.env`, `adapters/langchain/llm.py` |
+| 更换 GLM 模型 | `.env`, `config.py` |
+| 切换 Ollama 本地模型 | `.env`, `adapters/langchain/llm.py` |
+| 接其他 OpenAI-compatible API | `.env`, `adapters/langchain/llm.py` |
 | 改 ReAct 流程 | `adapters/langgraph/graph.py` |
 | 增加长期记忆 | `memory/long_term.py`, `interfaces/memory.py` |
 | 增加规划能力 | `core/controller.py`, `core/reasoning/`, `schemas/plan.py` |
@@ -455,8 +457,9 @@ app.py
 
 - CLI 启动。
 - LangGraph ReAct 图。
+- GLM Coding Pro OpenAI 兼容接口。
 - Ollama 模型接入。
-- OpenAI-compatible 预留接入。
+- 其他 OpenAI-compatible 模型接入。
 - 短期记忆。
 - 内置 calculator 工具。
 - MCP 工具加载。
